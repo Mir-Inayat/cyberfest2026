@@ -1,0 +1,436 @@
+import { useEffect, useMemo, useState } from 'react';
+import { collection, onSnapshot, type DocumentData } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+type ProblemStatement = {
+  id: string;
+  title: string;
+  description?: string;
+  track?: string;
+  difficulty?: string | null;
+  domain?: string | null;
+  problemContext?: string | null;
+  objective?: string | null;
+  expectedDeliverables?: string[] | null;
+  order?: number;
+  assignedTeams: string[];
+  isSpecialTrack?: boolean;
+  pdfLink?: string | null;
+  maxTeams?: number;
+};
+
+const safeNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+
+const asString = (value: unknown) => (typeof value === 'string' ? value : undefined);
+
+const mapProblemStatement = (id: string, data: DocumentData): ProblemStatement => ({
+  id,
+  title: asString(data.title) ?? id,
+  description: asString(data.description),
+  track: asString(data.track),
+  difficulty: asString(data.difficulty) ?? (data.difficulty === null ? null : undefined),
+  domain: asString(data.domain) ?? (data.domain === null ? null : undefined),
+  problemContext: asString(data.problemContext) ?? (data.problemContext === null ? null : undefined),
+  objective: asString(data.objective) ?? (data.objective === null ? null : undefined),
+  expectedDeliverables: Array.isArray(data.expectedDeliverables)
+    ? data.expectedDeliverables.filter((x: unknown): x is string => typeof x === 'string')
+    : data.expectedDeliverables === null
+      ? null
+      : undefined,
+  order: safeNumber(data.order),
+  assignedTeams: Array.isArray(data.assignedTeams)
+    ? data.assignedTeams.filter((x: unknown): x is string => typeof x === 'string')
+    : [],
+  isSpecialTrack: typeof data.isSpecialTrack === 'boolean' ? data.isSpecialTrack : undefined,
+  pdfLink: asString(data.pdfLink) ?? (data.pdfLink === null ? null : undefined),
+  maxTeams: safeNumber(data.maxTeams),
+});
+
+const ProblemStatementsReadOnly = () => {
+  const [psList, setPsList] = useState<ProblemStatement[]>([]);
+  const [psLoading, setPsLoading] = useState(true);
+  const [psLoadError, setPsLoadError] = useState<string | null>(null);
+
+  const [psSearch, setPsSearch] = useState('');
+  const [psTrackFilter, setPsTrackFilter] = useState<'generic' | 'special'>('generic');
+  const [psDifficultyFilter, setPsDifficultyFilter] = useState<string>('all');
+  const [psDomainFilter, setPsDomainFilter] = useState<string>('all');
+
+  const [psDialogOpen, setPsDialogOpen] = useState(false);
+  const [selectedPs, setSelectedPs] = useState<ProblemStatement | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'problemStatements'),
+      (snap) => {
+        try {
+          const list = snap.docs.map((d) => mapProblemStatement(d.id, d.data()));
+          list.sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+          setPsList(list);
+          setPsLoading(false);
+          setPsLoadError(null);
+        } catch (e) {
+          console.error('Error processing problem statements:', e);
+          setPsLoadError('Failed to process problem statements data.');
+          setPsLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Problem statements snapshot error:', err);
+        let errorMsg = 'Failed to load problem statements.';
+        
+        if (err.code === 'permission-denied') {
+          errorMsg = 'Access denied. Please contact organizers.';
+        } else if (err.code === 'unavailable') {
+          errorMsg = 'Connection lost. Please check your internet and refresh.';
+        } else if (err.code === 'failed-precondition') {
+          errorMsg = 'Database configuration error. Please contact organizers.';
+        }
+        
+        setPsLoadError(errorMsg);
+        setPsLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    // Reset filters when switching tracks
+    setPsDifficultyFilter('all');
+    setPsDomainFilter('all');
+  }, [psTrackFilter]);
+
+  const genericPsList = useMemo(() => {
+    return psList.filter((ps) => !ps.isSpecialTrack);
+  }, [psList]);
+
+  const psDifficulties = useMemo(() => {
+    const set = new Set<string>();
+    for (const ps of genericPsList) {
+      if (ps.difficulty && ps.difficulty.trim()) set.add(ps.difficulty.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [genericPsList]);
+
+  const psDomains = useMemo(() => {
+    const set = new Set<string>();
+    for (const ps of genericPsList) {
+      if (ps.domain && ps.domain.trim()) set.add(ps.domain.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [genericPsList]);
+
+  const trackPsCount = useMemo(() => {
+    return psList.filter((ps) => {
+      if (psTrackFilter === 'generic') return !ps.isSpecialTrack;
+      if (psTrackFilter === 'special') return ps.isSpecialTrack === true;
+      return false;
+    }).length;
+  }, [psList, psTrackFilter]);
+
+  const filteredPsList = useMemo(() => {
+    const q = psSearch.trim().toLowerCase();
+
+    return psList.filter((ps) => {
+      // Track filtering
+      if (psTrackFilter === 'generic' && ps.isSpecialTrack) return false;
+      if (psTrackFilter === 'special' && !ps.isSpecialTrack) return false;
+
+      // Difficulty and Domain filters (only for generic track)
+      if (psTrackFilter === 'generic') {
+        if (psDifficultyFilter !== 'all' && (ps.difficulty ?? '').trim() !== psDifficultyFilter) return false;
+        if (psDomainFilter !== 'all' && (ps.domain ?? '').trim() !== psDomainFilter) return false;
+      }
+
+      // Search filtering
+      if (!q) return true;
+      const hay = [ps.id, ps.title, ps.track ?? '', ps.difficulty ?? '', ps.domain ?? ''].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [psList, psSearch, psTrackFilter, psDifficultyFilter, psDomainFilter]);
+
+  const openPsDetails = (ps: ProblemStatement) => {
+    if (!ps || !ps.id) {
+      console.error('Invalid problem statement data');
+      return;
+    }
+    setSelectedPs(ps);
+    setPsDialogOpen(true);
+  };
+
+  return (
+    <div className="cyber-card rounded-xl p-6 neon-border">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 className="font-orbitron text-xl font-bold text-primary">Problem Statements</h3>
+          <p className="font-rajdhani text-foreground/80">
+            View all problem statements from CyberFest 2026 Hackathon. The event has concluded.
+          </p>
+        </div>
+        <Badge variant="outline" className="border-green-500/40 text-green-300">
+          Archive
+        </Badge>
+      </div>
+
+      <div className="space-y-4">
+        {psLoadError && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-red-200 mb-1">Error Loading Problem Statements</div>
+                <div className="text-sm text-red-200/80">{psLoadError}</div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.location.reload()}
+                className="border-red-500/40 text-red-200 hover:bg-red-500/20"
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-primary/20 pt-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="font-orbitron text-base text-foreground">
+              {psTrackFilter === 'generic' ? 'Generic Problem Statements' : '⭐ Special Problem Statements'}
+            </div>
+            {psLoading ? <div className="text-sm text-foreground/60">Loading…</div> : null}
+          </div>
+
+          <div className="space-y-4 mb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                variant={psTrackFilter === 'generic' ? 'default' : 'outline'}
+                onClick={() => setPsTrackFilter('generic')}
+                className="flex-1 sm:flex-none"
+              >
+                Generic Problem Statements
+              </Button>
+              <Button 
+                variant={psTrackFilter === 'special' ? 'default' : 'outline'}
+                onClick={() => setPsTrackFilter('special')}
+                className={`flex-1 sm:flex-none ${psTrackFilter === 'special' ? 'bg-yellow-600 hover:bg-yellow-700 text-white border-yellow-600' : 'hover:bg-yellow-600/10'}`}
+              >
+                ⭐ Special Problem Statements
+              </Button>
+            </div>
+
+            {psTrackFilter === 'generic' && (psDifficulties.length > 0 || psDomains.length > 0) && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {psDifficulties.length > 0 && (
+                  <Select value={psDifficultyFilter} onValueChange={setPsDifficultyFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Difficulty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All difficulties</SelectItem>
+                      {psDifficulties.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {psDomains.length > 0 && (
+                  <Select value={psDomainFilter} onValueChange={setPsDomainFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Domain" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All domains</SelectItem>
+                      {psDomains.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            <Input
+              value={psSearch}
+              onChange={(e) => setPsSearch(e.target.value)}
+              placeholder="Search by PS id or title…"
+              className="w-full"
+            />
+
+            {psTrackFilter === 'generic' && (psDifficultyFilter !== 'all' || psDomainFilter !== 'all') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPsDifficultyFilter('all');
+                  setPsDomainFilter('all');
+                }}
+                className="w-full sm:w-auto"
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          <div className="text-xs text-foreground/60 mb-3">
+            Showing {filteredPsList.length} of {trackPsCount} {psTrackFilter === 'generic' ? 'generic' : 'special'} problem statements
+          </div>
+
+          {trackPsCount === 0 && !psLoading ? (
+            <div className="text-sm text-foreground/70">
+              No {psTrackFilter === 'generic' ? 'generic' : 'special'} problem statements available.
+            </div>
+          ) : filteredPsList.length === 0 && !psLoading ? (
+            <div className="text-sm text-foreground/70">
+              No problem statements match your search.
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {filteredPsList.map((ps) => {
+                const filled = ps.assignedTeams.length;
+                const maxTeams = ps.maxTeams ?? 3;
+
+                return (
+                  <div key={ps.id} className="rounded-lg border border-primary/20 bg-black/20 p-4 hover:border-primary/40 hover:bg-black/30 transition">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => openPsDetails(ps)}
+                          className="w-full text-left"
+                        >
+                          <div className="font-orbitron text-base text-foreground leading-snug">
+                            <span className="text-foreground/60 mr-2">{ps.id}</span>
+                            {ps.title}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {ps.track ? <Badge variant="secondary">{ps.track}</Badge> : null}
+                            {ps.isSpecialTrack ? <Badge className="bg-yellow-600 text-white">⭐ Special</Badge> : null}
+                            {ps.difficulty ? <Badge className="bg-blue-600 text-white">{ps.difficulty}</Badge> : null}
+                            {ps.domain ? <Badge className="bg-emerald-600 text-white">{ps.domain}</Badge> : null}
+                            {typeof ps.order === 'number' ? <Badge variant="outline" className="border-primary/30">#{ps.order}</Badge> : null}
+                          </div>
+                        </button>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge variant="outline" className="border-primary/30">
+                          {filled}/{maxTeams} teams
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {ps.description ? (
+                      <p className="mt-3 text-sm text-foreground/75 leading-relaxed line-clamp-3">{ps.description}</p>
+                    ) : null}
+
+                    <div className="mt-3 flex items-center justify-end">
+                      <Button size="sm" variant="secondary" onClick={() => openPsDetails(ps)}>
+                        View Details
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Dialog open={psDialogOpen} onOpenChange={setPsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedPs?.title ?? selectedPs?.id ?? 'Problem Statement'}</DialogTitle>
+            <DialogDescription>{selectedPs?.id ? `ID: ${selectedPs.id}` : null}</DialogDescription>
+          </DialogHeader>
+
+          {selectedPs ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {selectedPs.track ? <Badge variant="secondary">{selectedPs.track}</Badge> : null}
+                {selectedPs.isSpecialTrack ? <Badge className="bg-yellow-600 text-white">⭐ Special</Badge> : null}
+                {selectedPs.difficulty ? <Badge className="bg-blue-600 text-white">{selectedPs.difficulty}</Badge> : null}
+                {selectedPs.domain ? <Badge className="bg-emerald-600 text-white">{selectedPs.domain}</Badge> : null}
+                {typeof selectedPs.order === 'number' ? (
+                  <Badge variant="outline" className="border-primary/30 text-primary">
+                    Order #{selectedPs.order}
+                  </Badge>
+                ) : null}
+                <Badge variant="outline" className="border-primary/30 text-primary">
+                  Teams: {selectedPs.assignedTeams.length}/{selectedPs.maxTeams ?? 3}
+                </Badge>
+              </div>
+
+              {selectedPs.problemContext ? (
+                <div className="space-y-1">
+                  <div className="font-orbitron text-sm text-foreground">Problem Context</div>
+                  <div className="text-sm text-foreground/80 whitespace-pre-wrap">{selectedPs.problemContext}</div>
+                </div>
+              ) : null}
+
+              {selectedPs.objective ? (
+                <div className="space-y-1">
+                  <div className="font-orbitron text-sm text-foreground">Objective</div>
+                  <div className="text-sm text-foreground/80 whitespace-pre-wrap">{selectedPs.objective}</div>
+                </div>
+              ) : null}
+
+              {selectedPs.expectedDeliverables?.length ? (
+                <div className="space-y-1">
+                  <div className="font-orbitron text-sm text-foreground">Expected Deliverables</div>
+                  <ul className="list-disc pl-5 text-sm text-foreground/80 space-y-1">
+                    {selectedPs.expectedDeliverables.map((d, i) => (
+                      <li key={`${selectedPs.id}-deliv-${i}`}>{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {selectedPs.description ? (
+                <div className="space-y-1">
+                  <div className="font-orbitron text-sm text-foreground">Full Text</div>
+                  <div className="text-sm text-foreground/80 whitespace-pre-wrap">{selectedPs.description}</div>
+                </div>
+              ) : null}
+
+              {selectedPs.pdfLink ? (
+                <div className="space-y-2">
+                  <div className="font-orbitron text-sm text-foreground">Full Problem Statement (PDF)</div>
+                  <Button
+                    onClick={() => window.open(selectedPs.pdfLink!, '_blank')}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                  >
+                    📄 Download/View Full PDF
+                  </Button>
+                  <div className="text-xs text-foreground/60">Opens Google Drive link in a new tab</div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default ProblemStatementsReadOnly;

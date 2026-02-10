@@ -76,6 +76,16 @@ interface Registration {
   kitDistributedAt?: string;
 }
 
+interface Feedback {
+  id: string;
+  name: string;
+  email: string;
+  category: string;
+  rating: number;
+  feedback: string;
+  submittedAt: string;
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -95,9 +105,11 @@ const Admin = () => {
   const [addingMember, setAddingMember] = useState<{ regId: string; newMember: Partial<TeamMember> } | null>(null);
   const [editingTeamDetails, setEditingTeamDetails] = useState<{ regId: string; teamName: string; eventType: 'hackathon' | 'ctf' } | null>(null);
   const [importingJSON, setImportingJSON] = useState(false);
-  const [activeTab, setActiveTab] = useState<'registrations' | 'event-management'>('registrations');
+  const [activeTab, setActiveTab] = useState<'registrations' | 'event-management' | 'feedback'>('registrations');
   const [eventManagementSearch, setEventManagementSearch] = useState('');
   const [venueAssignmentMode, setVenueAssignmentMode] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [venue1Count, setVenue1Count] = useState(0);
   const [venue2Count, setVenue2Count] = useState(0);
   const [venue3Count, setVenue3Count] = useState(0);
@@ -147,6 +159,14 @@ const Admin = () => {
     }
   }, [refreshCooldown]);
 
+  // Fetch feedback when tab changes to feedback
+  useEffect(() => {
+    if (activeTab === 'feedback' && feedback.length === 0) {
+      fetchFeedback();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const handleLogout = () => {
     sessionStorage.removeItem('admin_auth');
     navigate('/regdata');
@@ -185,6 +205,27 @@ const Admin = () => {
       alert('Failed to fetch registrations. Please check your Firebase connection.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFeedback = async () => {
+    setFeedbackLoading(true);
+    try {
+      const querySnapshot = await getDocs(collection(db, 'feedback'));
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Feedback[];
+      
+      // Sort by submittedAt descending (newest first)
+      data.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      
+      setFeedback(data);
+    } catch (error) {
+      console.error('Error fetching feedback:', error);
+      alert('Failed to fetch feedback. Please check your Firebase connection.');
+    } finally {
+      setFeedbackLoading(false);
     }
   };
 
@@ -1560,6 +1601,16 @@ const Admin = () => {
             }`}
           >
             Event Management
+          </button>
+          <button
+            onClick={() => setActiveTab('feedback')}
+            className={`px-6 py-3 font-medium transition-all ${
+              activeTab === 'feedback'
+                ? 'border-b-2 border-purple-500 text-purple-400'
+                : 'text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            Feedback
           </button>
         </div>
 
@@ -3408,6 +3459,85 @@ const Admin = () => {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Feedback Tab */}
+        {activeTab === 'feedback' && (
+          <div>
+            <Card className="bg-gray-800/50 border-purple-500/20">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl font-bold text-white">Event Feedback</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={fetchFeedback}
+                      disabled={feedbackLoading}
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${feedbackLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                    <Badge variant="outline" className="border-purple-500/50 text-purple-400">
+                      {feedback.length} responses
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {feedbackLoading ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    Loading feedback...
+                  </div>
+                ) : feedback.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    No feedback submitted yet.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {feedback.map((item) => (
+                      <Card key={item.id} className="bg-gray-900/50 border-gray-700">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="font-semibold text-white">{item.name}</div>
+                              <div className="text-sm text-gray-400">{item.email}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="flex items-center gap-1 mb-1">
+                                {[...Array(5)].map((_, i) => (
+                                  <span
+                                    key={i}
+                                    className={i < item.rating ? 'text-blue-500' : 'text-gray-600'}
+                                  >
+                                    ★
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(item.submittedAt).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mb-2">
+                            <Badge variant="outline" className="border-purple-500/30 text-purple-300">
+                              {item.category.replace('-', ' ').split(' ').map(word => 
+                                word.charAt(0).toUpperCase() + word.slice(1)
+                              ).join(' ')}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-gray-300 whitespace-pre-wrap bg-gray-800 rounded p-3">
+                            {item.feedback}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

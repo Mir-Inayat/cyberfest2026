@@ -1,5 +1,5 @@
 import Navbar from '@/components/Navbar';
-import ProblemStatementSelection from '@/components/ProblemStatementSelection';
+import ProblemStatementsReadOnly from '@/components/ProblemStatementsReadOnly';
 
 const ProblemStatements = () => {
   return (
@@ -13,12 +13,12 @@ const ProblemStatements = () => {
               <span className="gradient-text">Problem Statements</span>
             </h1>
             <p className="font-rajdhani text-foreground/80">
-              Authenticate with your team credentials to select a problem statement. Availability updates live and selections are locked to prevent parallel double-claims.
+              View all problem statements from CyberFest 2026 Hackathon. The event has now concluded.
             </p>
           </div>
 
           <div className="max-w-5xl mx-auto">
-            <ProblemStatementSelection />
+            <ProblemStatementsReadOnly />
           </div>
         </div>
       </main>

@@ -8,6 +8,7 @@ import AdminLogin from "./pages/AdminLogin";
 import Admin from "./pages/Admin";
 import PsAdmin from "./pages/PsAdmin";
 import ProblemStatements from "./pages/ProblemStatements";
+import Feedback from "./pages/Feedback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +22,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/problem-statements" element={<ProblemStatements />} />
+          <Route path="/feedback" element={<Feedback />} />
           <Route path="/regdata" element={<AdminLogin />} />
           <Route path="/regdata/dashboard" element={<Admin />} />
           <Route path="/regdata/ps" element={<PsAdmin />} />

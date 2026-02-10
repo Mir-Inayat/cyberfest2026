@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useInView } from 'framer-motion';
 import { useRef } from 'react';
-import ProblemStatementSelection from '@/components/ProblemStatementSelection';
+import ProblemStatementsReadOnly from '@/components/ProblemStatementsReadOnly';
 
 const HackathonSection = () => {
   const ref = useRef(null);
@@ -106,14 +106,14 @@ const HackathonSection = () => {
           </div>
         </motion.div>
 
-        {/* Problem Statement Selection */}
+        {/* Problem Statements - View Only */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6, delay: 0.5 }}
           className="max-w-5xl mx-auto mt-10"
         >
-          <ProblemStatementSelection />
+          <ProblemStatementsReadOnly />
         </motion.div>
       </div>
     </section>
