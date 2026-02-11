@@ -3499,6 +3499,82 @@ const Admin = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* Overall Rating Summary */}
+                    <Card className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border-purple-500/30">
+                      <CardContent className="p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4">Overall Rating Summary</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {/* Average Rating */}
+                          <div className="text-center">
+                            <div className="text-5xl font-bold text-blue-400 mb-2">
+                              {(feedback.reduce((sum, item) => sum + item.rating, 0) / feedback.length).toFixed(2)}
+                            </div>
+                            <div className="flex items-center justify-center gap-1 mb-2">
+                              {[...Array(5)].map((_, i) => (
+                                <span
+                                  key={i}
+                                  className={i < Math.round(feedback.reduce((sum, item) => sum + item.rating, 0) / feedback.length) ? 'text-blue-400 text-2xl' : 'text-gray-600 text-2xl'}
+                                >
+                                  ★
+                                </span>
+                              ))}
+                            </div>
+                            <div className="text-sm text-gray-400">Average Rating</div>
+                            <div className="text-xs text-gray-500 mt-1">from {feedback.length} responses</div>
+                          </div>
+
+                          {/* Rating Distribution */}
+                          <div>
+                            <div className="text-sm font-medium text-gray-300 mb-3">Rating Distribution</div>
+                            <div className="space-y-2">
+                              {[5, 4, 3, 2, 1].map((star) => {
+                                const count = feedback.filter(item => item.rating === star).length;
+                                const percentage = feedback.length > 0 ? (count / feedback.length) * 100 : 0;
+                                return (
+                                  <div key={star} className="flex items-center gap-2">
+                                    <span className="text-yellow-400 text-sm w-3">{star}</span>
+                                    <span className="text-yellow-400 text-sm">★</span>
+                                    <div className="flex-1 bg-gray-700 rounded-full h-2 overflow-hidden">
+                                      <div 
+                                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-full transition-all duration-300"
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-400 w-12 text-right">{count}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Category-wise Average */}
+                          <div>
+                            <div className="text-sm font-medium text-gray-300 mb-3">Category Average</div>
+                            <div className="space-y-2">
+                              {Array.from(new Set(feedback.map(item => item.category))).map((category) => {
+                                const categoryFeedback = feedback.filter(item => item.category === category);
+                                const avgRating = categoryFeedback.reduce((sum, item) => sum + item.rating, 0) / categoryFeedback.length;
+                                return (
+                                  <div key={category} className="flex items-center justify-between bg-gray-800/50 rounded px-3 py-2">
+                                    <span className="text-xs text-gray-300 capitalize">
+                                      {category.replace('-', ' ')}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-semibold text-blue-400">
+                                        {avgRating.toFixed(1)}
+                                      </span>
+                                      <span className="text-blue-400">★</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Individual Feedback Items */}
                     {feedback.map((item) => (
                       <Card key={item.id} className="bg-gray-900/50 border-gray-700">
                         <CardContent className="p-4">
